@@ -1,7 +1,7 @@
 # ===== ML-DSA-44 PROJECT =====
 CC = gcc
 CFLAGS = -std=c99 -O2 -Wall -Wextra -Isource -Icommon -IC:/OPENSSL/include
-LDFLAGS = -LC:/OPENSSL/lib -lcrypto -lssl
+#LDFLAGS = -LC:/OPENSSL/lib -lcrypto -lssl
 
 SRC_DIR = source
 COMMON_DIR = common
