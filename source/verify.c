@@ -14,10 +14,10 @@ int main(int argc, char *argv[]) {
     const char *pubkey_file = argv[2];
     const char *sig_file = argv[3];
 
-    // ---- Načítanie vstupného súboru ----
+    // ---- Nacitanie vstupneho suboru ----
     FILE *fin = fopen(input_file, "rb");
     if (!fin) {
-        perror("Chyba pri otváraní vstupného súboru");
+        perror("Chyba pri otvarani vstupneho suboru");
         return EXIT_FAILURE;
     }
     fseek(fin, 0, SEEK_END);
@@ -25,17 +25,17 @@ int main(int argc, char *argv[]) {
     rewind(fin);
     uint8_t *message = malloc(mlen);
     if (!message) {
-        fprintf(stderr, "Chyba alokácie pamäte pre správu\n");
+        fprintf(stderr, "Chyba alokacie pamate pre spravu\n");
         fclose(fin);
         return EXIT_FAILURE;
     }
     fread(message, 1, mlen, fin);
     fclose(fin);
 
-    // ---- Načítanie podpisu ----
+    // ---- Nacitanie podpisu ----
     FILE *fsig = fopen(sig_file, "rb");
     if (!fsig) {
-        perror("Chyba pri otváraní podpisového súboru");
+        perror("Chyba pri otvarani podpisoveho suboru");
         free(message);
         return EXIT_FAILURE;
     }
@@ -43,16 +43,16 @@ int main(int argc, char *argv[]) {
     size_t siglen = fread(signature, 1, sizeof(signature), fsig);
     fclose(fsig);
     if (siglen != PQCLEAN_MLDSA44_CLEAN_CRYPTO_BYTES) {
-        fprintf(stderr, "Neplatná dĺžka podpisu (%zu bajtov, očakáva sa %d)\n",
+        fprintf(stderr, "Neplatna dlzka podpisu (%zu bajtov, ocakava sa %d)\n",
                 siglen, PQCLEAN_MLDSA44_CLEAN_CRYPTO_BYTES);
         free(message);
         return EXIT_FAILURE;
     }
 
-    // ---- Načítanie verejného kľúča ----
+    // ---- Nacitanie verejneho kluca ----
     FILE *fpk = fopen(pubkey_file, "rb");
     if (!fpk) {
-        perror("Chyba pri otváraní verejného kľúča");
+        perror("Chyba pri otvarani verejneho kluca");
         free(message);
         return EXIT_FAILURE;
     }
@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
     size_t pklen = fread(pk, 1, sizeof(pk), fpk);
     fclose(fpk);
     if (pklen != PQCLEAN_MLDSA44_CLEAN_CRYPTO_PUBLICKEYBYTES) {
-        fprintf(stderr, "Neplatná dĺžka verejného kľúča (%zu bajtov, očakáva sa %d)\n",
+        fprintf(stderr, "Neplatna dlzka verejneho kluca (%zu bajtov, ocakava sa %d)\n",
                 pklen, PQCLEAN_MLDSA44_CLEAN_CRYPTO_PUBLICKEYBYTES);
         free(message);
         return EXIT_FAILURE;
@@ -71,9 +71,9 @@ int main(int argc, char *argv[]) {
         signature, siglen, message, mlen, pk);
 
     if (ret == 0) {
-        printf("✅ Podpis je platný pre súbor: %s\n", input_file);
+        printf("Podpis je platny pre subor: %s\n", input_file);
     } else {
-        printf("❌ Podpis NIE JE platný pre súbor: %s\n", input_file);
+        printf("Podpis NIE JE platny pre subor: %s\n", input_file);
     }
 
     free(message);

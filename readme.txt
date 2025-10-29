@@ -8,7 +8,7 @@ openssl pkey -in keys/openssl_app_key.pem -pubout -out keys/openssl_app_pk.pem
 --------------------------------------------------------------------------------------------------------------------------------------------------------
 podpis a overenie v OpenSSL pomocou app klucov
 --------------------------------------------------------------------------------------------------------------------------------------------------------
-openssl pkeyutl -sign -inkey keys/openssl_app_pk.pem -in files/test_bin.bin -out keys/openssl_app_sign.sig
+openssl pkeyutl -sign -inkey keys/openssl_app_sk.pem -in files/test_bin.bin -out keys/openssl_app_sign.sig
 openssl pkeyutl -verify -pubin -inkey keys/openssl_app_pk.pem -in files/test_bin.bin -sigfile keys/openssl_app_sign.sig
 --------------------------------------------------------------------------------------------------------------------------------------------------------
 prikazy na vytvorenie raw dat pre potreby porovnania binárnych dat
