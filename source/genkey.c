@@ -2,11 +2,20 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+
 #include "api.h"
 #include "sign.h"
 #include "params.h"
+#include "packing.h"
 #include "fips202.h"
 #include "randombytes.h"
+
+#ifdef _WIN32
+    #include <direct.h>
+#else
+    #include <sys/stat.h>
+#endif
+
 
 /*
  * genkey.c – generuje ML-DSA-44 kľúče a vypíše 32-bajtový seed
@@ -41,8 +50,9 @@ int main(void) {
 
     printf("🔑 Vygenerovaný 32-bajtový seed (hex, 64 znakov):\n%s\n\n", seed_hex);
     printf("Použi tento príkaz na vygenerovanie presne toho istého kľúča v OpenSSL:\n");
-    printf("openssl genpkey -algorithm ML-DSA-44 -pkeyopt seed:%s -out openssl_private.pem\n", seed_hex);
-    printf("openssl pkey -in openssl_private.pem -pubout -out openssl_public.pem\n\n");
+    printf("openssl genpkey -algorithm ML-DSA-44 -out keys/openssl_app_key.pem -pkeyopt seed:%s\n", seed_hex);
+    printf("openssl pkey -in keys/openssl_app_key.pem -out keys/openssl_app_sk.pem\n");
+    printf("openssl pkey -in keys/openssl_app_key.pem -pubout -out keys/openssl_app_pk.pem\n");
 
     /* ---- 2. Použi seed na odvodenie rho, rhoprime, key (rovnako ako PQClean) ---- */
     memcpy(seedbuf, seed, SEEDBYTES);
@@ -83,8 +93,8 @@ int main(void) {
     system("mkdir -p keys");
 #endif
 
-    FILE *fpk = fopen("keys/app_publickey.bin", "wb");
-    FILE *fsk = fopen("keys/app_secretkey.bin", "wb");
+    FILE *fpk = fopen("keys/app_pk.bin", "wb");
+    FILE *fsk = fopen("keys/app_sk.bin", "wb");
     if (!fpk || !fsk) {
         perror("❌ Chyba pri otváraní súborov");
         return EXIT_FAILURE;
@@ -96,8 +106,8 @@ int main(void) {
     fclose(fsk);
 
     printf("✅ Kľúče boli úspešne vygenerované a uložené do:\n");
-    printf("  keys/app_publickey.bin  (%zu bajtov)\n", sizeof(pk));
-    printf("  keys/app_secretkey.bin  (%zu bajtov)\n\n", sizeof(sk));
+    printf("  keys/app_pk.bin  (%zu bajtov)\n", sizeof(pk));
+    printf("  keys/app_sk.bin  (%zu bajtov)\n\n", sizeof(sk));
     printf("💾 Ulož si uvedený seed (%s) — s ním OpenSSL vygeneruje presne ten istý pár klúčov.\n", seed_hex);
 
     /* uloz seed ako raw bin a ako text hex do priecinka keys */

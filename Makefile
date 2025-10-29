@@ -33,6 +33,6 @@ openssl_from_seed: $(SRC_DIR)/openssl_from_seed.c
 # ----- Utility targets -----
 clean:
 	rm -f $(SRC_DIR)/*.o $(COMMON_DIR)/*.o $(BINARIES)
-	rm -f *.exe $(SRC_DIR)/*.exe $(COMMON_DIR)/*.exe $(KEYS_DIR)/*.pem $(KEYS_DIR)/*.bin $(KEYS_DIR)/*.txt $(KEYS_DIR)/*.hex
+	rm -f *.exe $(SRC_DIR)/*.exe $(COMMON_DIR)/*.exe $(KEYS_DIR)/*.pem $(KEYS_DIR)/*.bin $(KEYS_DIR)/*.txt $(KEYS_DIR)/*.hex $(KEYS_DIR)/*.sig
 
 .PHONY: all clean

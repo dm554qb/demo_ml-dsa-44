@@ -6,11 +6,25 @@
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
-#include <unistd.h>
+
+#ifdef _WIN32
+  #include <direct.h>   // _mkdir
+#else
+  #include <sys/stat.h> // mkdir
+  #include <sys/types.h>
+#endif
 
 #define SEEDBYTES 32
 
-void clean_hex(char *s) {
+static void ensure_keys_dir(void) {
+#ifdef _WIN32
+    _mkdir("keys"); // existujúci nevadí
+#else
+    mkdir("keys", 0700);
+#endif
+}
+
+static void clean_hex(char *s) {
     char *d = s;
     while (*s) {
         if (*s != ':' && !isspace((unsigned char)*s))
@@ -20,10 +34,9 @@ void clean_hex(char *s) {
     *d = '\0';
 }
 
-int hex_to_bin(const char *hex, uint8_t *out, size_t outlen) {
+static int hex_to_bin(const char *hex, uint8_t *out, size_t outlen) {
     size_t len = strlen(hex);
-    if (len % 2 != 0)
-        return -1;
+    if (len % 2 != 0) return -1;
     for (size_t i = 0; i < len / 2 && i < outlen; i++) {
         unsigned int byte;
         if (sscanf(hex + 2 * i, "%02x", &byte) != 1)
@@ -33,7 +46,7 @@ int hex_to_bin(const char *hex, uint8_t *out, size_t outlen) {
     return (int)(len / 2);
 }
 
-int save_bin(const char *path, const uint8_t *data, size_t len) {
+static int save_bin(const char *path, const uint8_t *data, size_t len) {
     FILE *f = fopen(path, "wb");
     if (!f) {
         fprintf(stderr, "❌ Nepodarilo sa zapísať %s\n", path);
@@ -45,7 +58,53 @@ int save_bin(const char *path, const uint8_t *data, size_t len) {
     return 0;
 }
 
+static int run_to_file(const char *cmd, const char *outfile) {
+    FILE *pipe = popen(cmd, "r");
+    if (!pipe) {
+        fprintf(stderr, "❌ Nepodarilo sa spustiť: %s\n", cmd);
+        return -1;
+    }
+    FILE *out = fopen(outfile, "wb");
+    if (!out) {
+        fprintf(stderr, "❌ Nepodarilo sa otvoriť %s na zápis\n", outfile);
+        pclose(pipe);
+        return -1;
+    }
+
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), pipe)) > 0)
+        fwrite(buf, 1, n, out);
+
+    fclose(out);
+    int rc = pclose(pipe);
+    if (rc != 0) {
+        fprintf(stderr, "⚠ OpenSSL vrátil kód %d pri: %s\n", rc, cmd);
+        return -1;
+    }
+    printf("✅ Vytvorený súbor: %s\n", outfile);
+    return 0;
+}
+
+static int run_status(const char *cmd) {
+    int rc = system(cmd);
+#ifdef _WIN32
+    if (rc == -1) {
+        fprintf(stderr, "❌ Zlyhalo spustenie príkazu (system): %s\n", cmd);
+        return -1;
+    }
+#else
+    if (rc == -1 || WEXITSTATUS(rc) != 0) {
+        fprintf(stderr, "❌ Príkaz skončil chybou: %s (rc=%d)\n", cmd, rc);
+        return -1;
+    }
+#endif
+    return 0;
+}
+
 int main(void) {
+    ensure_keys_dir();
+
     char seed_hex[2 * SEEDBYTES + 1] = {0};
     uint8_t seed_bin[SEEDBYTES];
     FILE *f;
@@ -53,7 +112,7 @@ int main(void) {
 
     printf("=== OpenSSL from Seed (ML-DSA-44) ===\n");
 
-    // načítaj seed
+    // 0) Načítaj seed (preferuj bin, potom hex)
     if ((f = fopen("keys/app_seed.bin", "rb")) != NULL) {
         if (fread(seed_bin, 1, SEEDBYTES, f) == SEEDBYTES) {
             for (int i = 0; i < SEEDBYTES; i++)
@@ -74,135 +133,111 @@ int main(void) {
     }
 
     if (!have_seed) {
-        fprintf(stderr, "❌ Seed sa nenašiel (chýba app_seed.bin/hex)\n");
+        fprintf(stderr, "❌ Seed sa nenašiel (chýba keys/app_seed.bin alebo keys/app_seed.hex)\n");
         return 1;
     }
 
-    // 1️⃣ openssl genpkey (bez system(), cez pipe)
-    char cmd[600];
+    // 1) openssl genpkey z hexa seedu → PEM (cez popen -> súbor)
+    char cmd[700];
     snprintf(cmd, sizeof(cmd),
-             "openssl genpkey -algorithm ML-DSA-44 -pkeyopt hexseed:%s", seed_hex);
+             "openssl genpkey -algorithm ML-DSA-44 -pkeyopt hexseed:%s",
+             seed_hex);
 
-    FILE *pipe = popen(cmd, "r");
-    if (!pipe) {
-        fprintf(stderr, "❌ Nepodarilo sa spustiť openssl genpkey\n");
+    if (run_to_file(cmd, "keys/openssl_app_key.pem") != 0)
         return 1;
+
+    // 2) Dump textu (seed/priv/pub hexy) do txt
+    if (run_to_file("openssl pkey -in keys/openssl_app_key.pem -text -noout",
+                    "keys/openssl_appkey_dump.txt") != 0) {
+        fprintf(stderr, "⚠ Nepodarilo sa vytvoriť textový dump.\n");
     }
 
-    FILE *outpem = fopen("keys/openssl_key.pem", "wb");
-    if (!outpem) {
-        fprintf(stderr, "❌ Nepodarilo sa otvoriť keys/openssl_key.pem na zápis\n");
-        pclose(pipe);
+    // 3) Exporty do PEM súborov (tu OpenSSL zapisuje do -out, takže stačí system())
+    if (run_status("openssl pkey -in keys/openssl_app_key.pem -out keys/openssl_app_sk.pem") != 0)
         return 1;
-    }
-
-    char buf[4096];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), pipe)) > 0)
-        fwrite(buf, 1, n, outpem);
-    fclose(outpem);
-    pclose(pipe);
-
-    printf("✅ Vytvorený PEM: keys/openssl_key.pem\n");
-
-    // 2️⃣ Spusti openssl pkey -text -noout
-    pipe = popen("openssl pkey -in keys/openssl_key.pem -text -noout", "r");
-    if (!pipe) {
-        fprintf(stderr, "❌ Nepodarilo sa spustiť openssl pkey\n");
+    if (run_status("openssl pkey -in keys/openssl_app_key.pem -pubout -out keys/openssl_app_pk.pem") != 0)
         return 1;
-    }
 
-    char *text = NULL;
-    size_t text_size = 0;
-    while (fgets(buf, sizeof(buf), pipe)) {
-        size_t len = strlen(buf);
-        char *tmp = realloc(text, text_size + len + 1);
-        if (!tmp) {
-            fprintf(stderr, "❌ Nedostatok pamäte\n");
-            pclose(pipe);
-            free(text);
-            return 1;
-        }
-        text = tmp;
-        memcpy(text + text_size, buf, len);
-        text_size += len;
-        text[text_size] = '\0';
-    }
-    pclose(pipe);
+    // 4) Z dumpu vytiahni seed/priv/pub do .bin (voliteľné, ale užitočné)
+    //    — prehľadaj text keys/openssl_appkey_dump.txt
+    FILE *fd = fopen("keys/openssl_appkey_dump.txt", "rb");
+    if (fd) {
+        fseek(fd, 0, SEEK_END);
+        long tlen = ftell(fd);
+        rewind(fd);
+        char *text = (char*)malloc((size_t)tlen + 1);
+        if (text && fread(text, 1, (size_t)tlen, fd) == (size_t)tlen) {
+            text[tlen] = '\0';
 
-    if (!text || text_size == 0) {
-        fprintf(stderr, "❌ OpenSSL nevygeneroval žiadny výstup\n");
-        return 1;
-    }
+            const char *names[] = {"seed:", "priv:", "pub:"};
+            const char *out_files[] = {
+                "keys/openssl_app_seed.bin",
+                "keys/openssl_app_sk.bin",
+                "keys/openssl_app_pk.bin"
+            };
 
-    FILE *fdump = fopen("keys/openssl_key_dump.txt", "w");
-    if (fdump) {
-        fwrite(text, 1, text_size, fdump);
-        fclose(fdump);
-    }
-
-    // 3️⃣ Extrakcia sekcií seed:, priv:, pub:
-    const char *names[] = {"seed:", "priv:", "pub:"};
-    const char *out_files[] = {
-        "keys/openssl_seed.bin",
-        "keys/openssl_secretkey.bin",
-        "keys/openssl_publickey.bin"
-    };
-
-    for (int nidx = 0; nidx < 3; nidx++) {
-        const char *start = strstr(text, names[nidx]);
-        if (!start) {
-            printf("⚠ Nenájdený blok %s\n", names[nidx]);
-            continue;
-        }
-
-        // posuň sa za názov a nový riadok
-        const char *p = strchr(start, '\n');
-        if (!p) continue;
-        p++;
-
-        char block[65536] = {0};
-        size_t bi = 0;
-
-        // zbieraj hex po ďalší nadpis alebo koniec
-        while (*p) {
-            if (strncmp(p, "seed:", 5) == 0 ||
-                strncmp(p, "priv:", 5) == 0 ||
-                strncmp(p, "pub:", 4) == 0)
-                break;
-
-            if (isxdigit((unsigned char)p[0]) || p[0] == ' ' || p[0] == '\t') {
-                while (*p && *p != '\n' && bi < sizeof(block) - 1) {
-                    block[bi++] = *p++;
+            for (int nidx = 0; nidx < 3; nidx++) {
+                const char *start = strstr(text, names[nidx]);
+                if (!start) {
+                    printf("⚠ Nenájdený blok %s v dump súbore\n", names[nidx]);
+                    continue;
                 }
+                const char *p = strchr(start, '\n');
+                if (!p) continue;
+                p++;
+
+                char block[65536] = {0};
+                size_t bi = 0;
+
+                while (*p) {
+                    if (strncmp(p, "seed:", 5) == 0 ||
+                        strncmp(p, "priv:", 5) == 0 ||
+                        strncmp(p, "pub:", 4) == 0)
+                        break;
+
+                    if (isxdigit((unsigned char)p[0]) || p[0] == ' ' || p[0] == '\t') {
+                        while (*p && *p != '\n' && bi < sizeof(block) - 1) {
+                            block[bi++] = *p++;
+                        }
+                    }
+                    if (*p) p++;
+                }
+
+                block[bi] = '\0';
+                clean_hex(block);
+
+                size_t outlen = strlen(block) / 2;
+                if (outlen == 0) {
+                    printf("⚠ Blok %s je prázdny\n", names[nidx]);
+                    continue;
+                }
+
+                uint8_t *out = (uint8_t*)malloc(outlen);
+                if (!out) {
+                    fprintf(stderr, "❌ Nedostatok pamäte pri %s\n", names[nidx]);
+                    continue;
+                }
+
+                if (hex_to_bin(block, out, outlen) > 0)
+                    save_bin(out_files[nidx], out, outlen);
+                else
+                    printf("⚠ Chyba dekódovania %s\n", names[nidx]);
+
+                free(out);
             }
-            if (*p) p++;
+        } else {
+            fprintf(stderr, "⚠ Nepodarilo sa prečítať keys/openssl_appkey_dump.txt\n");
         }
-
-        block[bi] = '\0';
-        clean_hex(block);
-
-        size_t outlen = strlen(block) / 2;
-        if (outlen == 0) {
-            printf("⚠ Blok %s je prázdny\n", names[nidx]);
-            continue;
-        }
-
-        uint8_t *out = malloc(outlen);
-        if (!out) {
-            fprintf(stderr, "❌ Nedostatok pamäte pri %s\n", names[nidx]);
-            continue;
-        }
-
-        if (hex_to_bin(block, out, outlen) > 0)
-            save_bin(out_files[nidx], out, outlen);
-        else
-            printf("⚠ Chyba dekódovania %s\n", names[nidx]);
-
-        free(out);
+        if (text) free(text);
+        fclose(fd);
     }
 
-    free(text);
-    printf("\n✅ Hotovo. Výstupy uložené do priečinka keys/\n");
+    printf("\n✅ Hotovo. Výstupy v priečinku keys/:\n");
+    printf("   • openssl_app_key.pem  (hlavný PEM zo seedu)\n");
+    printf("   • openssl_app_sk.pem       (privátny PEM, PKCS#8)\n");
+    printf("   • openssl_app_pk.pem       (verejný PEM, SubjectPublicKeyInfo)\n");
+    printf("   • openssl_appkey_dump.txt  (textový výpis seed/priv/pub)\n");
+    printf("   • openssl_app_seed.bin / openssl_app_sk.bin / openssl_app_pk.bin (raw hexy z dumpu)\n");
+
     return 0;
 }

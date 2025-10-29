@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Uloženie podpisu do súboru
-    FILE *fsig = fopen("signature.bin", "wb");
+    FILE *fsig = fopen("keys/app_signature.bin", "wb");
     if (!fsig) {
         perror("Chyba pri ukladaní podpisu");
         free(message);
