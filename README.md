@@ -10,7 +10,7 @@ Cieľom je ukázať kompatibilitu medzi implementáciou z knižnice **PQClean** 
 Všetky príkazy a binárky boli testované v prostrediach:
 - **OpenSSL 3.5.2** a **OpenSSL 3.6.0**
 - **Ubuntu 24.04 LTS** a obraz **BIKS**
-- Kompatibilné aj s Windows (MinGW / VSCode / XAMPP)
+- Kompilované pomocou Make a Makefile
 
 ---
 
