@@ -102,42 +102,116 @@ static int run_status(const char *cmd) {
     return 0;
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
     ensure_keys_dir();
+
+    if (argc != 2) {
+        fprintf(stderr, "Pouzitie: %s <seed.bin alebo seed.hex>\n", argv[0]);
+        fprintf(stderr, "  seed.bin - 32 bajtov raw binarneho seedu (vygenerovane napr. genkey)\n");
+        fprintf(stderr, "  seed.hex - textova hexa reprezentacia toho isteho seedu (64 znakov v ASCII)\n");
+        return 1;
+    }
+
+    const char *seed_path = argv[1];
 
     char seed_hex[2 * SEEDBYTES + 1] = {0};
     uint8_t seed_bin[SEEDBYTES];
-    FILE *f;
+    FILE *f = NULL;
     int have_seed = 0;
 
     printf("=== OpenSSL from Seed (ML-DSA-44) ===\n");
 
-    // 0) Nacitaj seed (preferuj bin, potom hex)
-    if ((f = fopen("keys/app_seed.bin", "rb")) != NULL) {
-        if (fread(seed_bin, 1, SEEDBYTES, f) == SEEDBYTES) {
-            for (int i = 0; i < SEEDBYTES; i++)
-                sprintf(seed_hex + 2 * i, "%02x", seed_bin[i]);
-            have_seed = 1;
-            printf("Nacitany seed z keys/app_seed.bin\n");
+    /* Rozhodni podla pripony, ale bud tolerantny:
+       - .bin  => ocakava 32 bajtov raw
+       - .hex  => ocakava 64 hexa znakov (pripadne s medzerami/novymi riadkami) */
+    const char *dot = strrchr(seed_path, '.');
+
+    if (dot && strcmp(dot, ".bin") == 0) {
+        /* BINARNY SEED */
+        f = fopen(seed_path, "rb");
+        if (!f) {
+            perror("Chyba pri otvarani seed.bin");
+            return 1;
+        }
+        size_t r = fread(seed_bin, 1, SEEDBYTES, f);
+        fclose(f);
+        if (r != SEEDBYTES) {
+            fprintf(stderr, "Očakavam 32 bajtov v %s, nasiel som %zu\n", seed_path, r);
+            return 1;
+        }
+        for (int i = 0; i < SEEDBYTES; i++)
+            sprintf(seed_hex + 2 * i, "%02x", seed_bin[i]);
+        have_seed = 1;
+        printf("Nacitany binarny seed z %s (32 bajtov)\n", seed_path);
+
+    } else if (dot && strcmp(dot, ".hex") == 0) {
+        /* TEXTOVY HEX SEED */
+        f = fopen(seed_path, "r");
+        if (!f) {
+            perror("Chyba pri otvarani seed.hex");
+            return 1;
+        }
+        if (!fgets(seed_hex, sizeof(seed_hex), f)) {
+            fprintf(stderr, "Nepodarilo sa nacitat riadok zo %s\n", seed_path);
+            fclose(f);
+            return 1;
         }
         fclose(f);
-    } else if ((f = fopen("keys/app_seed.hex", "r")) != NULL) {
-        if (fgets(seed_hex, sizeof(seed_hex), f)) {
-            for (int i = 0; seed_hex[i]; i++)
-                if (isspace((unsigned char)seed_hex[i]))
-                    seed_hex[i] = '\0';
-            have_seed = 1;
-            printf("Nacitany seed z keys/app_seed.hex\n");
+
+        /* odstranit whitespace a dvojbodky, skontrolovat dlzku */
+        clean_hex(seed_hex);
+        size_t len = strlen(seed_hex);
+        if (len != 2 * SEEDBYTES) {
+            fprintf(stderr, "Ocakavanych je 64 hexa znakov v %s, nasiel som %zu\n", seed_path, len);
+            return 1;
         }
-        fclose(f);
+        have_seed = 1;
+        printf("Nacitany hex seed z %s\n", seed_path);
+
+    } else {
+        /* Neznama pripona -> skus bin, potom hex, s rozumnymi hlaskami */
+        f = fopen(seed_path, "rb");
+        if (f) {
+            size_t r = fread(seed_bin, 1, SEEDBYTES, f);
+            fclose(f);
+            if (r == SEEDBYTES) {
+                for (int i = 0; i < SEEDBYTES; i++)
+                    sprintf(seed_hex + 2 * i, "%02x", seed_bin[i]);
+                have_seed = 1;
+                printf("Nacitany binarny seed z %s (32 bajtov)\n", seed_path);
+            }
+        }
+
+        if (!have_seed) {
+            f = fopen(seed_path, "r");
+            if (!f) {
+                perror("Chyba pri otvarani suboru so seedom");
+                return 1;
+            }
+            if (!fgets(seed_hex, sizeof(seed_hex), f)) {
+                fprintf(stderr, "Nepodarilo sa nacitat seed zo suboru %s\n", seed_path);
+                fclose(f);
+                return 1;
+            }
+            fclose(f);
+            clean_hex(seed_hex);
+            size_t len = strlen(seed_hex);
+            if (len != 2 * SEEDBYTES) {
+                fprintf(stderr, "Subor %s nema platny format bin/hex (ocakavam 32 bajtov alebo 64 hexa znakov)\n",
+                        seed_path);
+                return 1;
+            }
+            have_seed = 1;
+            printf("Nacitany hex seed zo suboru %s\n", seed_path);
+        }
     }
 
     if (!have_seed) {
-        fprintf(stderr, "Seed sa nenasiel (chyba keys/app_seed.bin alebo keys/app_seed.hex)\n");
+        fprintf(stderr, "Seed sa nepodarilo nacitat z %s\n", seed_path);
         return 1;
     }
 
-    // 1) openssl genpkey z hexa seedu -> PEM (cez popen -> subor)
+    /* 1) openssl genpkey z hexa seedu -> PEM (cez popen -> subor) */
     char cmd[700];
     snprintf(cmd, sizeof(cmd),
              "openssl genpkey -algorithm ML-DSA-44 -pkeyopt hexseed:%s",
@@ -146,17 +220,17 @@ int main(void) {
     if (run_to_file(cmd, "keys/openssl_app_key.pem") != 0)
         return 1;
 
-    // 2) Dump textu (seed/priv/pub hexy) do txt
+    /* 2) Dump textu (seed/priv/pub hexy) do txt */
     if (run_to_file("openssl pkey -in keys/openssl_app_key.pem -text -noout",
                     "keys/openssl_appkey_dump.txt") != 0) {
         fprintf(stderr, "Nepodarilo sa vytvorit textovy dump.\n");
     }
 
-    // 3) Export verejneho kluca do PEM
+    /* 3) Export verejneho kluca do PEM */
     if (run_status("openssl pkey -in keys/openssl_app_key.pem -pubout -out keys/openssl_app_pk.pem") != 0)
         return 1;
 
-    // 4) Z dumpu vytiahni seed/priv/pub do .bin
+    /* 4) Z dumpu vytiahni seed/priv/pub do .bin */
     FILE *fd = fopen("keys/openssl_appkey_dump.txt", "rb");
     if (fd) {
         fseek(fd, 0, SEEK_END);

@@ -1,7 +1,10 @@
 # ===== ML-DSA-44 PROJECT =====
 CC = gcc
 CFLAGS = -std=c99 -O2 -Wall -Wextra -Isource -Icommon -IC:/OPENSSL/include
-LDFLAGS = -LC:/OPENSSL/lib -lcrypto -lssl
+
+# Na Windows/MinGW nelinkujeme priamo libcrypto/libssl,
+# lebo pouzivame len externy program openssl.exe, nie C API.
+LDFLAGS =
 
 SRC_DIR = source
 COMMON_DIR = common
