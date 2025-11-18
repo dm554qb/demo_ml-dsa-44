@@ -1,139 +1,131 @@
-# ML-DSA-44 Demo Application  
-Post-Quantum Digital Signature Demo (PQClean + OpenSSL)
 
-Tento projekt demonštruje kompletnú implementáciu post-kvantovej podpisovej schémy **ML-DSA-44 (FIPS-204)** na praktické generovanie kľúčov, podpisovanie a overovanie súborov.
+# demo_ml-dsa-44  
+Implementácia a testovacia sada pre ML-DSA-44 (post-kvantová podpisová schéma, FIPS‑204)
 
-Implementácia je založená na **PQClean ML-DSA-44 (Dilithium-2)** a doplnená o:
-- generovanie kľúčov kompatibilných s OpenSSL pomocou 32-bajtového seedu,
-- konverziu OpenSSL PEM → binárnych PQClean formátov,
-- porovnávanie kľúčov (OpenSSL vs. aplikácia),
-- podpis a overovanie ľubovoľných súborov.
-
-Projekt je navrhnutý ako praktická demonštrácia k diplomovej práci  
-**„Post-kvantové digitálne podpisy“ (TUKE FEI, 2025)**.
+Tento projekt obsahuje kompletnú implementáciu ML‑DSA‑44 založenú na PQClean, doplnenú o
+vlastné nástroje na generovanie kľúčov, podpisovanie, verifikáciu a obojsmernú
+kompatibilitu s OpenSSL (PEM ↔ raw .bin formáty).
 
 ---
 
 ## 📁 Štruktúra projektu
 
 ```
-source/                   // implementácia ML-DSA-44 (PQClean)
-    genkey.c
-    sign_file.c
-    verify.c
-    openssl_from_seed.c
-    *.c *.h (ntt, poly, packing, rounding, reduce, fips202 …)
-common/                   // SHAKE, randombytes, AES
-keys/                     // generované kľúče a podpisy
-files/                    // testovacie vstupy
+source/
+    genkey.c               – generovanie kľúčov + deterministický seed
+    sign_file.c            – podpisovanie súboru pomocou secretkey.bin
+    verify.c               – overenie podpisu
+    openssl_from_app.c     – prevod APP → OpenSSL (seed → PEM → raw bloky)
+    app_from_openssl.c     – prevod OpenSSL → APP (PEM → seed/pk/sk .bin)
+    api.h, params.h        – parametre ML-DSA-44
+    poly*, ntt*, reduce*, rounding*, packing*, sign.c – jadro PQClean
 
-Makefile
-README.md
+common/
+    fips202, shake, sha2, randombytes, keccak, sp800-185…
+
+keys/
+    – sem sa ukladajú kľúče, seed, dumpy a konverzie
+
+files/
+    test_text*.txt, test_bin.bin – ukážkové dáta
 ```
 
 ---
 
-## 🔧 Kompilácia
+## 🔐 Funkcionalita
 
-Stačí spustiť:
+### 1. Generovanie kľúčov  
+```
+./genkey
+```
+Výsledok:
+- `keys/app_publickey.bin` (1312 B)  
+- `keys/app_secretkey.bin` (2560 B)  
+- `keys/app_seed.bin` (32 B raw)  
+- `keys/app_seed.hex` (64 hex znakov – kompatibilné s OpenSSL)
+
+### 2. Podpisovanie  
+```
+./sign_file <subor> <secretkey.bin>
+```
+Výstup:  
+- `signature.bin` (2420 B)
+
+### 3. Overenie podpisu  
+```
+./verify <subor> <publickey.bin> <signature.bin>
+```
+
+### 4. Export APP → OpenSSL  
+```
+./openssl_from_app
+```
+Použije seed z APP a vygeneruje:  
+- `keys/openssl_app_key.pem`  
+- `keys/openssl_appkey_dump.txt`  
+- `keys/openssl_app_seed.bin`  
+- `keys/openssl_app_sk.bin`  
+- `keys/openssl_app_pk.bin`
+
+### 5. Import OpenSSL → APP  
+```
+./app_from_openssl <pem_súbor>
+```
+Parsuje PEM a uloží:  
+- `keys/app_openssl_seed.bin`  
+- `keys/app_openssl_sk.bin`  
+- `keys/app_openssl_pk.bin`
+
+---
+
+## 🧪 Test kompatibility
+
+1. `./genkey`  
+2. `./openssl_from_app`  
+3. porovnať:
+
+```
+diff keys/app_publickey.bin keys/openssl_app_pk.bin
+diff keys/app_secretkey.bin keys/openssl_app_sk.bin   (len ak zodpovedá layout)
+```
+
+4. `./app_from_openssl keys/openssl_app_key.pem`  
+5. opäť porovnať:
+
+```
+diff keys/app_openssl_pk.bin keys/app_publickey.bin
+```
+
+---
+
+## 🛠️ Kompilácia
+
+Projekt používa GCC a OpenSSL 3.5+.  
+Jednoduchý build:
 
 ```
 make
 ```
 
-Vytvoria sa binárky:
-
-- `genkey`
-- `sign_file`
-- `verify`
-- `openssl_from_seed`
-
----
-
-# 🔑 1. Generovanie kľúčov (app → PQClean)
-
-```
-./genkey
-```
-
-Program urobí:
-
-1. vygeneruje **32-bajtový seed**,
-2. odvodením (shake256) získa: rho, rhoprime, key,
-3. vygeneruje ML-DSA-44 kľúče podľa PQClean,
-4. uloží:
-
-| Súbor | Popis |
-|------|-------|
-| `keys/app_publickey.bin` | 1312 bajtov |
-| `keys/app_secretkey.bin` | 2560 bajtov |
-| `keys/app_seed.bin` | raw 32 bajtov |
-| `keys/app_seed.hex` | hex formát pre OpenSSL |
-
-Program vypíše aj príkazy:
-
-```
-openssl genpkey -algorithm ML-DSA-44 -pkeyopt seed:<seedhex> -out openssl_private.pem
-openssl pkey -in openssl_private.pem -pubout -out openssl_public.pem
-```
+Možné targety:  
+- `genkey`  
+- `sign_file`  
+- `verify`  
+- `openssl_from_app`  
+- `app_from_openssl`
 
 ---
 
-# ✍️ 2. Podpisovanie súboru
+## 📌 Poznámky
 
-```
-./sign_file <subor> <sukromny_kluc.bin>
-```
-
-Výstup:  
-**signature.bin** – ML-DSA-44 podpis (2420 bajtov)
+- Implementácia ML‑DSA‑44 je prevzatá z PQClean (korektná, bezpečná, bez úprav algoritmu).  
+- Nástroje pre prácu s PEM sú zámerne low-level (popen → text dump → hex parsing).  
+- Kompatibilita závisí od formátu `openssl pkey -text` – môže sa meniť medzi verziami.  
+- Projekt je určený pre vzdelávacie a výskumné účely (diplomová práca).
 
 ---
 
-# 🔍 3. Overovanie podpisu
-
-```
-./verify <subor> <verejny_kluc.bin> <signature.bin>
-```
-
----
-
-# 🔄 4. OpenSSL kľúče zo seedu
-
-```
-./openssl_from_seed
-```
-
-Vytvorí:
-
-- `keys/openssl_key.pem`
-- `keys/openssl_seed.bin`
-- `keys/openssl_secretkey.bin`
-- `keys/openssl_publickey.bin`
-- `keys/openssl_key_dump.txt`
-
----
-
-# 🧪 Testovací scenár
-
-```
-./genkey
-./sign_file files/test_bin.bin keys/app_secretkey.bin
-./verify files/test_bin.bin keys/app_publickey.bin signature.bin
-./openssl_from_seed
-```
-
----
-
-# 🎓 Autor
-
-**Dávid Mudrák**, TUKE FEI, 2025  
-Téma: *Post-kvantové digitálne podpisy*
-
----
-
-# 📜 Licencia
-
-Časť implementácie z projektu **PQClean** – MIT/CC0.  
-Ostatné súbory – MIT.
-
+## © Autor
+Dávid Mudrák  
+TUKE – Dipl. práca „Post‑kvantové digitálne podpisy“  
+2025
