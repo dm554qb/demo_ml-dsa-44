@@ -133,22 +133,21 @@ openssl pkeyutl -verify -pubin -inkey keys/openssl_pk.pem -in files/test_bin.bin
 
 ---
 
-# 🖼️ Podpis a overenie: APP → OpenSSL
+## 🖼️ Podpis a overenie: APP → OpenSSL
 
-![APP → OpenSSL podpis]<img width="1241" height="189" alt="openssl_from_app_podpis a overenie" src="https://github.com/user-attachments/assets/3f4cf545-1c18-4a22-8692-d05c66341395" />
+<img width="1241" src="https://github.com/user-attachments/assets/3f4cf545-1c18-4a22-8692-d05c66341395" />
 
 **Komentár:**  
 Podpis vytvorený aplikáciou (`app_sign.bin`) je úspešne overený v OpenSSL (`Signature Verified Successfully`).  
 Podpis vytvorený OpenSSL (`openssl_sign.bin`) je platný aj v aplikácii.  
 ➡️ Tým je potvrdená kompletná obojsmerná kompatibilita.
 
+
 ---
 
-# 🖼️ Podpis a overenie: OpenSSL → APP → OpenSSL
+## 🖼️ Podpis a overenie: OpenSSL → APP → OpenSSL
 
-![OpenSSL → APP podpis]<img width="1218" height="207" alt="app_from_openssl_podpis a overenie" src="https://github.com/user-attachments/assets/60170b4d-7ea3-4932-a078-1de82648239e" />
-
-
+<img width="1218" src="https://github.com/user-attachments/assets/60170b4d-7ea3-4932-a078-1de82648239e" />
 
 **Komentár:**  
 OpenSSL vytvorí podpis (`openssl_sign.sig`), ktorý aplikácia úspešne overí.  
