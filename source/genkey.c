@@ -49,10 +49,6 @@ int main(void) {
     seed_hex[SEEDBYTES * 2] = '\0';
 
     printf("Vygenerovany 32-bajtovy seed (hex, 64 znakov):\n%s\n\n", seed_hex);
-    printf("Pouzi tento prikaz na vygenerovanie presne toho isteho kluca v OpenSSL:\n");
-    printf("openssl genpkey -algorithm ML-DSA-44 -out keys/openssl_app_key.pem -pkeyopt seed:%s\n", seed_hex);
-    printf("openssl pkey -in keys/openssl_app_key.pem -out keys/openssl_app_sk.pem\n");
-    printf("openssl pkey -in keys/openssl_app_key.pem -pubout -out keys/openssl_app_pk.pem\n");
 
     /* ---- 2. Pouzi seed na odvodenie rho, rhoprime, key (rovnako ako PQClean) ---- */
     memcpy(seedbuf, seed, SEEDBYTES);
@@ -105,7 +101,6 @@ int main(void) {
     printf("Kluc bol uspesne vygenerovany a ulozeny do:\n");
     printf("  keys/app_pk.bin  (%zu bajtov)\n", sizeof(pk));
     printf("  keys/app_sk.bin  (%zu bajtov)\n\n", sizeof(sk));
-    printf("Uloz si uvedeny seed (%s) - s nim OpenSSL vygeneruje presne ten isty par klucov.\n", seed_hex);
 
     /* uloz seed ako raw bin a ako text hex do priecinka keys */
     FILE *fseedbin = fopen("keys/app_seed.bin", "wb");
@@ -115,7 +110,7 @@ int main(void) {
         fprintf(fseedtxt, "%s\n", seed_hex);
         fclose(fseedbin);
         fclose(fseedtxt);
-        printf("Seed ulozeny aj do keys/app_seed.bin (raw %d bajtov) a keys/app_seed.hex (hex)\n", SEEDBYTES);
+        printf("Seed ulozeny do keys/app_seed.bin (raw %d bajtov) a keys/app_seed.hex (hex)\n", SEEDBYTES);
     } else {
         if (fseedbin) fclose(fseedbin);
         if (fseedtxt) fclose(fseedtxt);

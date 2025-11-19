@@ -52,4 +52,7 @@ clean:
 	rm -f *.exe $(SRC_DIR)/*.exe $(COMMON_DIR)/*.exe
 	rm -f $(KEYS_DIR)/*.pem $(KEYS_DIR)/*.bin $(KEYS_DIR)/*.txt $(KEYS_DIR)/*.hex $(KEYS_DIR)/*.sig
 
+clean_keys:
+	rm -f $(KEYS_DIR)/*.pem $(KEYS_DIR)/*.bin $(KEYS_DIR)/*.txt $(KEYS_DIR)/*.hex $(KEYS_DIR)/*.sig
+
 .PHONY: all clean
