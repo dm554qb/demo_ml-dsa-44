@@ -1,35 +1,133 @@
-________________________________________________________________________________________________________________________________________________________
-prikazy na generovanie klucu podla urciteho seed-u, aplikacia: openssl_frokm_seed
-________________________________________________________________________________________________________________________________________________________
-openssl genpkey -algorithm ML-DSA-44 -out keys/openssl_app_key.pem -pkeyopt hexseed:c7c3230109ad78acb0004fd80e6d65156ce3d7338ede2192743520d0ad113a6f
-openssl pkey -in keys/openssl_app_key.pem -text -noout > keys/openssl_appkey_dump.txt
-openssl pkey -in keys/openssl_app_key.pem -out keys/openssl_app_sk.pem
-openssl pkey -in keys/openssl_app_key.pem -pubout -out keys/openssl_app_pk.pem
---------------------------------------------------------------------------------------------------------------------------------------------------------
-podpis a overenie v OpenSSL pomocou app klucov
---------------------------------------------------------------------------------------------------------------------------------------------------------
-openssl pkeyutl -sign -inkey keys/openssl_app_sk.pem -in files/test_bin.bin -out keys/openssl_app_sign.sig
-openssl pkeyutl -verify -pubin -inkey keys/openssl_app_pk.pem -in files/test_bin.bin -sigfile keys/openssl_app_sign.sig
---------------------------------------------------------------------------------------------------------------------------------------------------------
-prikazy na vytvorenie raw dat pre potreby porovnania binárnych dat
---------------------------------------------------------------------------------------------------------------------------------------------------------
-grep -A 3 "^seed" keys/openssl_appkey_dump.txt | grep -v "seed" | tr -d ' \n:' | xxd -r -p > keys/openssl_app_seed.bin
-awk '/^priv:/ {flag=1; next} /^pub:/ {flag=0} flag' keys/openssl_appkey_dump.txt | tr -d ' \n:' | xxd -r -p > keys/openssl_app_sk.bin
-grep -A 999 "^pub" keys/openssl_appkey_dump.txt | grep -v "pub" | tr -d ' \n:' | xxd -r -p > keys/openssl_app_pk.bin
-________________________________________________________________________________________________________________________________________________________
-________________________________________________________________________________________________________________________________________________________
-OPENSSL
-________________________________________________________________________________________________________________________________________________________
-________________________________________________________________________________________________________________________________________________________
-generovanie náhodných kľúčov v openssl
-________________________________________________________________________________________________________________________________________________________
-openssl genpkey -algorithm ML-DSA-44 -out keys/openssl_key.pem
-openssl pkey -in keys/openssl_key.pem -out keys/openssl_sk.pem
-openssl pkey -in keys/openssl_key.pem -pubout -out keys/openssl_pk.pem
---------------------------------------------------------------------------------------------------------------------------------------------------------
-podpis a overenie
---------------------------------------------------------------------------------------------------------------------------------------------------------
-openssl pkeyutl -sign -inkey keys/openssl_pk.pem -in files/test_bin.bin -out keys/openssl_sign.sig
-openssl pkeyutl -verify -pubin -inkey keys/openssl_pk.pem -in files/test_bin.bin -sigfile keys/openssl_sign.sig
-________________________________________________________________________________________________________________________________________________________
-________________________________________________________________________________________________________________________________________________________
+================================================================================
+ ML-DSA-44 – Generovanie kľúčov, podpisovanie a overovanie (APP ↔ OpenSSL)
+================================================================================
+
+A. GENEROVANIE KĽÚČOV V APLIKÁCII (APP → BIN)
+--------------------------------------------------------------------------------
+# program nevyžaduje argumenty
+./genkey
+
+# výstup:
+#   keys/app_pk.bin
+#   keys/app_sk.bin
+#   keys/app_seed.bin / .hex
+
+
+B. PODPIS A OVERENIE V APLIKÁCII (všeobecné vstupy)
+--------------------------------------------------------------------------------
+# podpis:
+./sign_file <subor_na_podpisanie> <subor_so_sukromnym_klucom>
+
+# príklad:
+# ./sign_file files/test_bin.bin keys/app_sk.bin
+
+# výstup podpisu:
+#   keys/app_sign.bin
+
+# overenie:
+./verify <subor_na_overenie> <publickey.bin> <signature.bin>
+
+# príklad:
+# ./verify files/test_bin.bin keys/app_pk.bin keys/app_sign.bin
+
+
+C. EXPORT APP → OPENSSL (deterministické kľúče podľa seedu)
+--------------------------------------------------------------------------------
+./openssl_from_app <seed.bin | seed.hex>
+
+# príklady:
+# ./openssl_from_app keys/app_seed.bin
+# ./openssl_from_app keys/app_seed.hex
+
+# výstup:
+#   keys/openssl_app_key.pem
+#   keys/openssl_app_pk.pem
+#   keys/openssl_app_seed.bin
+#   keys/openssl_app_sk.bin
+#   keys/openssl_app_pk.bin
+
+
+D. IMPORT OPENSSL → APP (extrakcia raw PQClean kľúčov)
+--------------------------------------------------------------------------------
+./app_from_openssl <openssl_pem_subor>
+
+# príklad:
+# ./app_from_openssl keys/openssl_key.pem
+
+# výstup:
+#   keys/app_openssl_seed.bin
+#   keys/app_openssl_sk.bin
+#   keys/app_openssl_pk.bin
+
+
+================================================================================
+ OPENSSL – PRÁCA S ML-DSA-44 KĽÚČMI
+================================================================================
+
+E. GENEROVANIE KĽÚČOV PODĽA URČITÉHO SEEDU (APP → OpenSSL)
+--------------------------------------------------------------------------------
+openssl genpkey -algorithm ML-DSA-44 \
+  -pkeyopt hexseed:<seed_hex> \
+  -out <openssl_key.pem>
+
+# príklad:
+# openssl genpkey -algorithm ML-DSA-44 \
+#   -pkeyopt hexseed:c7...a6f \
+#   -out keys/openssl_app_key.pem
+
+openssl pkey -in <openssl_key.pem> -text -noout \
+  > <dump_subor.txt>
+
+openssl pkey -in <openssl_key.pem> -out <openssl_sk.pem>
+openssl pkey -in <openssl_key.pem> -pubout -out <openssl_pk.pem>
+
+
+F. PODPIS A OVERENIE V OPENSSL POMOCOU APP ALEBO OPENSSL KĽÚČOV
+--------------------------------------------------------------------------------
+openssl pkeyutl -sign \
+  -inkey <sukromny_kluc.pem> \
+  -in <subor_na_podpisanie> \
+  -out <vystup_podpisu.sig>
+
+openssl pkeyutl -verify -pubin \
+  -inkey <verejny_kluc.pem> \
+  -in <subor_na_overenie> \
+  -sigfile <podpis.sig>
+
+
+G. EXTRAKCIA RAW DÁT NA POROVNANIE (OpenSSL → BIN)
+--------------------------------------------------------------------------------
+grep -A 3 "^seed" <dump.txt> | grep -v "seed" | tr -d ' \n:' \
+  | xxd -r -p > <seed.bin>
+
+awk '/^priv:/ {flag=1; next} /^pub:/ {flag=0} flag' <dump.txt> \
+  | tr -d ' \n:' | xxd -r -p > <secretkey.bin>
+
+grep -A 999 "^pub" <dump.txt> | grep -v "pub" | tr -d ' \n:' \
+  | xxd -r -p > <publickey.bin>
+
+
+================================================================================
+ OPENSSL – NÁHODNÉ ML-DSA-44 KĽÚČE
+================================================================================
+
+H. GENEROVANIE NÁHODNÝCH KĽÚČOV
+--------------------------------------------------------------------------------
+openssl genpkey -algorithm ML-DSA-44 -out <openssl_key.pem>
+openssl pkey -in <openssl_key.pem> -pubout -out <openssl_pk.pem>
+
+
+I. PODPIS A OVERENIE (OpenSSL → OpenSSL)
+--------------------------------------------------------------------------------
+openssl pkeyutl -sign \
+  -inkey <openssl_key.pem> \
+  -in <subor> \
+  -out <podpis.sig>
+
+openssl pkeyutl -verify -pubin \
+  -inkey <openssl_pk.pem> \
+  -in <subor> \
+  -sigfile <podpis.sig>
+
+
+================================================================================
